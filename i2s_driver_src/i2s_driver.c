@@ -19,6 +19,8 @@
 #include <linux/sched.h>    // For interrupts
 #include <linux/interrupt.h>
 
+#include <linux/uaccess.h>
+
 #include "i2s_driver.h"
 
 #define BYTES_PER_SAMPLE        4    // Everything is stored in 32 bits
@@ -26,7 +28,11 @@
 #define SAMPLE_BUFF_LEN_BYTES   BYTES_PER_SAMPLE * SAMPLE_BUFF_LEN
 
 /* Interrupt number associated with the I2S interface */
-#define I2S_INTERRUPT 79
+#ifdef RPIZERO
+  #define I2S_INTERRUPT 79
+#elif defined(RPITWO)
+  #define I2S_INTERRUPT 85
+#endif
 
 MODULE_AUTHOR("TR");
 MODULE_DESCRIPTION("Low level drivers for Raspberry Pi's I2S interface.");
@@ -75,13 +81,13 @@ static int i2s_init_default(void)
   /* Make sure memory isn't being used by something else */
   if(request_mem_region(I2S_BASE, I2S_SIZE, DEVICE_NAME) == NULL)
   {
-    printk(KERN_ALERT "Failed to request I2S memory.");
+    printk(KERN_ALERT "Failed to request I2S memory.\n");
     return -EBUSY;
   }
 
   /* Convert physical addresses into virtual addresses for the kernel to use */
   i2s = (volatile struct i2s_inst *) ioremap(I2S_BASE, I2S_SIZE);
-  printk(KERN_INFO "I2S memory acquired successfully.");
+  printk(KERN_INFO "I2S memory acquired successfully.\n");
 
   // Initialize software buffers
   buffer_init(&rx_buf, rx_buffer, SAMPLE_BUFF_LEN);
@@ -95,28 +101,28 @@ static int i2s_init_default(void)
   i2s->RXC_A = 0;
   i2s->GRAY = 0;
 
-  printk(KERN_INFO "I2S registers reset.");
+  printk(KERN_INFO "I2S registers reset.\n");
 
   /* Begin register configuration */
 
   // Use the Raspberry Pi as an I2S slave
-  printk(KERN_INFO "Configuring Raspberry Pi as I2S slave...");
+  printk(KERN_INFO "Configuring Raspberry Pi as I2S slave...\n");
   i2s->MODE_A = I2S_MODE_A_CLKM | I2S_MODE_A_FSM;
 
   /* Configure channels and frame width
    * Gives a channel width of 24 bits,
    * First bit of channel 1 is received on the 2nd clock cycle,
    * First bit of channel 2 is received on the 34rd clock cycle */
-  printk(KERN_INFO "Setting channel width...");
+  printk(KERN_INFO "Setting channel width...\n");
   i2s->RXC_A = I2S_RXC_A_CH1EN | I2S_RXC_A_CH1POS(1) | I2S_RXC_A_CH1WEX | I2S_RXC_A_CH1WID(0) | I2S_RXC_A_CH2EN | I2S_RXC_A_CH2POS(33) | I2S_RXC_A_CH2WEX | I2S_RXC_A_CH2WID(0);
   i2s->TXC_A = I2S_TXC_A_CH1EN | I2S_TXC_A_CH1POS(1) | I2S_TXC_A_CH1WEX | I2S_TXC_A_CH1WID(0) | I2S_TXC_A_CH2EN | I2S_TXC_A_CH2POS(33) | I2S_TXC_A_CH2WEX | I2S_TXC_A_CH2WID(0);
 
   // Disable Standby
-  printk(KERN_INFO "Disabling standby...");
+  printk(KERN_INFO "Disabling standby...\n");
   i2s->CS_A |= I2S_CS_A_STBY;
 
   // Reset FIFOs
-  printk(KERN_INFO "Clearing FIFOs...");
+  printk(KERN_INFO "Clearing FIFOs...\n");
   i2s->CS_A |= I2S_CS_A_TXCLR | I2S_CS_A_RXCLR;
 
   /* Interrupt driven mode */
@@ -126,19 +132,20 @@ static int i2s_init_default(void)
   i2s->INTEN_A = I2S_INTEN_A_TXW | I2S_INTEN_A_RXR;
 
   // Enable the PCM/I2S module
-  printk(KERN_INFO "Enabling I2S...");
+  printk(KERN_INFO "Enabling I2S...\n");
   i2s->CS_A |= I2S_CS_A_EN;
 
-  printk(KERN_INFO "I2S configuration Complete.");
-  // printk(KERN_INFO "I2S CS contents %x", i2s->CS_A);
-  // printk(KERN_INFO "I2S MODE contents %x", i2s->MODE_A);
-  // printk(KERN_INFO "I2S RXC contents %x", i2s->RXC_A);
-  // printk(KERN_INFO "I2S TXC contents %x", i2s->TXC_A);
-  // printk(KERN_INFO "I2S INTEN contents %x", i2s->INTEN_A);
-  // printk(KERN_INFO "I2S INTSTC contents %x", i2s->INTSTC_A);
-  // printk(KERN_INFO "I2S_SET_TXON macro value = %x", I2S_SET_TXON);
-  // printk(KERN_INFO "I2S_SET_RXON macro value = %x", I2S_SET_RXON);
-  // printk(KERN_INFO "I2S_TX_BUFF_SPACE macro value = %x", I2S_TX_BUFF_SPACE);
+  printk(KERN_INFO "I2S configuration Complete.\n");
+  // printk(KERN_INFO "I2S CS contents %x\n", i2s->CS_A);
+  // printk(KERN_INFO "I2S MODE contents %x\n", i2s->MODE_A);
+  // printk(KERN_INFO "I2S RXC contents %x\n", i2s->RXC_A);
+  // printk(KERN_INFO "I2S TXC contents %x\n", i2s->TXC_A);
+  // printk(KERN_INFO "I2S INTEN contents %x\n", i2s->INTEN_A);
+  // printk(KERN_INFO "I2S INTSTC contents %x\n", i2s->INTSTC_A);
+  // printk(KERN_INFO "I2S_SET_TXON macro value = %x\n", I2S_SET_TXON);
+  // printk(KERN_INFO "I2S_SET_RXON macro value = %x\n", I2S_SET_RXON);
+  // printk(KERN_INFO "I2S_TX_BUFF_SPACE macro value = %x\n", I2S_TX_BUFF_SPACE);
+  // printk("buffer_remaining(&tx_buf): %d\n", buffer_remaining(&tx_buf));
 
   /* I2S driver is now configured, but TX and RX will need to be turned on before data is transferred */
 
@@ -149,41 +156,41 @@ static void inline i2s_enable(void)
 {
   wmb();
   i2s->CS_A |= I2S_CS_A_EN;
-  printk(KERN_INFO "I2S interface enabled.");
+  printk(KERN_INFO "I2S interface enabled.\n");
 }
 
 static void inline i2s_disable(void)
 {
   wmb();
   i2s->CS_A &= (~I2S_CS_A_EN);
-  printk(KERN_INFO "I2S interface disabled.");
+  printk(KERN_INFO "I2S interface disabled.\n");
 }
 
 static void inline i2s_enable_tx(void)
 {
   wmb();
   i2s->CS_A |= I2S_CS_A_TXON;
-  // printk(KERN_INFO "TX enabled.");
+  // printk(KERN_INFO "TX enabled.\n");
 }
 
 static void inline i2s_disable_tx(void)
 {
   wmb();
   i2s->CS_A &= ~I2S_CS_A_TXON;
-  // printk(KERN_INFO "TX disabled.");
+  // printk(KERN_INFO "TX disabled.\n");
 }
 
 static void inline i2s_enable_rx(void)
 {
   wmb();
   i2s->CS_A |= I2S_CS_A_RXON;
-  // printk(KERN_INFO "RX enabled.");
+  // printk(KERN_INFO "RX enabled.\n");
 }
 
 static void inline i2s_disable_rx(void)
 {  wmb();
   i2s->CS_A &= ~I2S_CS_A_RXON;
-  // printk(KERN_INFO "RX disabled.");
+  // printk(KERN_INFO "RX disabled.\n");
 }
 
 static void inline i2s_clear_tx_fifo(void)
@@ -315,6 +322,7 @@ static void i2s_reset(void)
  * Interrupt handler
  *************************************************************
  */
+
 static irq_handler_t i2s_interrupt_handler(int irq, void *dev_id, struct pt_regs *regs)
 {
    // Do interrupt things here
@@ -342,11 +350,11 @@ static irq_handler_t i2s_interrupt_handler(int irq, void *dev_id, struct pt_regs
         if(buffer_items(&tx_buf) == 0)
         {
           tx_error_count++;
-          // printk(KERN_INFO "TX buffer underflow.");
+          // printk(KERN_INFO "TX buffer underflow.\n");
           if(tx_error_count > 1000000)
           {
             /* Shut down to keep from hanging */
-            printk(KERN_ALERT "Buffer underflow limit reached. Disabling TX...");
+            printk(KERN_ALERT "Buffer underflow limit reached. Disabling TX...\n");
             tx_error_count = 0;
             i2s_disable_tx();
 
@@ -369,17 +377,17 @@ static irq_handler_t i2s_interrupt_handler(int irq, void *dev_id, struct pt_regs
        if(!(i2s->CS_A & I2S_CS_A_RXD_MASK))
        {
          /* No more data to read */
-        //  printk(KERN_INFO "No RX data to read.");
+        //  printk(KERN_INFO "No RX data to read.\n");
          break;
        }
        else if(buffer_remaining(&rx_buf) == 0)
        {
          rx_error_count++;
-        //  printk(KERN_INFO "RX buffer overflow.");
+        //  printk(KERN_INFO "RX buffer overflow.\n");
          if(rx_error_count > 1000000)
          {
            /* Shut it down to keep from hanging forever */
-           printk(KERN_ALERT "Buffer overflow limit reached. Disabling RX...");
+           printk(KERN_ALERT "Buffer overflow limit reached. Disabling RX...\n");
            rx_error_count = 0;
            i2s_disable_rx();
 
@@ -469,7 +477,7 @@ static ssize_t device_write(struct file *file, const char *buffer, size_t length
 
     if(buffer_write(&tx_buf, tx_temp) < 0)
     {
-      printk(KERN_INFO "TX buffer overflow.");
+      printk(KERN_INFO "TX buffer overflow.\n");
     }
 
     index += BYTES_PER_SAMPLE;
@@ -500,11 +508,11 @@ static int device_open(struct inode *inode, struct file *file)
   result = request_irq(I2S_INTERRUPT, (irq_handler_t) i2s_interrupt_handler, IRQF_TRIGGER_RISING, DEVICE_NAME, NULL);
   if(result < 0)
   {
-    printk(KERN_ALERT "Failed to acquire I2S interrupt %d. Returned %d", I2S_INTERRUPT, result);
+    printk(KERN_ALERT "Failed to acquire I2S interrupt %d. Returned %d\n", I2S_INTERRUPT, result);
     return -EBUSY;
   }
 
-  printk(KERN_INFO "I2S interrupts enabled.");
+  printk(KERN_INFO "I2S interrupts enabled.\n");
 
   /* Increment usage count to be able to prooperly close the module. */
   try_module_get(THIS_MODULE);
@@ -668,7 +676,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 int init_module(void)
 {
   int status = 1;
-  printk(KERN_INFO "Installing I2S driver...");
+  printk(KERN_INFO "Installing I2S driver...\n");
 
   //Temporarily use my default settings.
   status = i2s_init_default();
@@ -676,18 +684,18 @@ int init_module(void)
   /* Hardware should now be set up and ready to go */
   if(status < 0)
   {
-    printk(KERN_ALERT "Hardware configuration failed. Driver not installed.");
+    printk(KERN_ALERT "Hardware configuration failed. Driver not installed.\n");
     return -1;
   }
 
   major = register_chrdev(0, DEVICE_NAME, &fops);
   if(major < 0)
   {
-    printk(KERN_ALERT "register_chrdev failed with major = %d\n", major);
+    printk(KERN_ALERT "register_chrdev failed with major = %d\n\n", major);
     return major;
   }
 
-  printk(KERN_INFO "I2S driver successfully assigned to major number %d.", major);
+  printk(KERN_INFO "I2S driver successfully assigned to major number %d.\n", major);
 
   return 0;
 
@@ -697,17 +705,17 @@ int init_module(void)
 void cleanup_module(void)
 {
   /* Disable all the things */
-  // printk(KERN_INFO "Disabling I2S interrupts.");
+  // printk(KERN_INFO "Disabling I2S interrupts.\n");
   i2s_disable_tx();
   i2s_reset();
-  // printk(KERN_INFO "I2S interface disabled and reset.");
+  // printk(KERN_INFO "I2S interface disabled and reset.\n");
 
   /* Unmap all memory regions used */
-  // printk(KERN_INFO "Unmapping memory regions used.");
+  // printk(KERN_INFO "Unmapping memory regions used.\n");
   iounmap(i2s);
   release_mem_region(I2S_BASE, I2S_SIZE);
 
   unregister_chrdev(major, DEVICE_NAME);
 
-  printk(KERN_INFO "I2S driver removed.");
+  printk(KERN_INFO "I2S driver removed.\n");
 }

@@ -1,0 +1,1 @@
+cmd_/root/raspberry-pi-i2s-driver/i2s_driver_src/i2s_driver.ko := ld -EL -r  -T ./scripts/module-common.lds --build-id  -o /root/raspberry-pi-i2s-driver/i2s_driver_src/i2s_driver.ko /root/raspberry-pi-i2s-driver/i2s_driver_src/i2s_driver.o /root/raspberry-pi-i2s-driver/i2s_driver_src/i2s_driver.mod.o ;  true

@@ -37,13 +37,13 @@
 #define DEVICE_NAME "i2s_driver"
 
 /* Switch these depending on which version of the RaspPi you're using */
-#define RPIZERO   // For original Raspberry Pi and Zero
-// #define RPITWO    // For Raspberry Pi 2 or 3
+// #define RPIZERO   // For original Raspberry Pi and Zero
+#define RPITWO    // For Raspberry Pi 2 or 3
 
 /* Address Definitions */
 #ifdef RPIZERO
   #define PI_PERIPHERAL_BASE        0x20000000
-#elif RPITWO
+#elif defined(RPITWO)
   #define PI_PERIPHERAL_BASE        0x3F000000
 #endif
 
